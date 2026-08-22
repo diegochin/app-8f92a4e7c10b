@@ -380,18 +380,9 @@
   <div id="map-view" class="view active">
     <div class="toolbar">
       <h1>Tube Map Tour</h1>
-      <button onclick="addNewStation()">+ Add Station</button>
-      <button class="secondary" onclick="resetZoom()">Reset View</button>
-      <button class="secondary" onclick="exportData()">Export Data</button>
-      
-      <!-- Manual Import Options -->
-      <input type="file" id="import-json-input" accept=".json,application/json" style="display: none;" onchange="handleImportData(event)">
-      <button class="secondary" onclick="document.getElementById('import-json-input').click()">Import JSON</button>
-
-      <input type="file" id="import-folder-input" webkitdirectory directory multiple style="display: none;" onchange="handleFolderUpload(event)">
-      <button class="secondary" onclick="document.getElementById('import-folder-input').click()">📁 Import Folder</button>
-      
-      <button class="secondary" onclick="clearAllStations()">Clear All</button>
+      <button class="secondary" onclick="resetZoom()">Reset Map</button>
+      <button class="secondary" onclick="addNewStation()">Add Station</button>
+      <button class="secondary" onclick="exportData()">Export JSON</button>
     </div>
 
     <div id="map-viewport">
@@ -518,16 +509,6 @@
       });
     }
 
-    async function dbClearAllPhotos() {
-      const db = await openDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).clear();
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    }
-
     // --- State & App Management ---
     let stations = JSON.parse(localStorage.getItem('tube_stations_v4')) || [];
     let currentStation = null;
@@ -538,14 +519,12 @@
       localStorage.setItem('tube_stations_v4', JSON.stringify(stations));
     }
 
-    // Always fetch latest tube_stations.json from GitHub if present
     async function loadDefaultStationsIfEmpty() {
       try {
         const response = await fetch('tube_stations.json');
         if (response.ok) {
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) {
-            // Overwrite with server data if local was empty
             if (stations.length === 0) {
               stations = data;
               saveStations();
@@ -567,7 +546,6 @@
       saveStations();
     }
 
-    // Build URL safe relative path
     function buildServerPhotoURL(stationName, fileName) {
       return `photos/${encodeURIComponent(stationName.trim())}/${encodeURIComponent(fileName.trim())}`;
     }
@@ -726,15 +704,6 @@
       alert(`"${name}" marker placed! Click it to view photos, or drag the red dot to its spot on the map.`);
     }
 
-    async function clearAllStations() {
-      if (confirm("Are you sure you want to remove all stations and their saved photos?")) {
-        stations = [];
-        localStorage.removeItem('tube_stations_v4');
-        await dbClearAllPhotos();
-        renderPins();
-      }
-    }
-
     function deleteCurrentPin() {
       if (!currentStation) return;
       const sameNameCount = stations.filter(s => getStationKey(s.name) === getStationKey(currentStation.name)).length;
@@ -767,67 +736,6 @@
       downloadAnchor.remove();
     }
 
-    function handleImportData(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          const importedStations = JSON.parse(e.target.result);
-          if (Array.isArray(importedStations)) {
-            stations = importedStations;
-            saveStations();
-            renderPins();
-            alert("Stations imported successfully!");
-          } else {
-            alert("Invalid JSON format. Expected an array of stations.");
-          }
-        } catch (err) {
-          alert("Error parsing JSON file: " + err.message);
-        }
-      };
-      reader.readAsText(file);
-      event.target.value = '';
-    }
-
-    async function handleFolderUpload(event) {
-      const files = Array.from(event.target.files);
-      if (!files.length) return;
-
-      let loadedCount = 0;
-
-      for (const file of files) {
-        const pathParts = file.webkitRelativePath.split('/');
-        if (pathParts.length < 2) continue;
-
-        const folderStationName = pathParts[pathParts.length - 2].trim();
-        const folderKey = getStationKey(folderStationName);
-        const fileName = file.name;
-
-        const matchingStations = stations.filter(s => getStationKey(s.name) === folderKey);
-
-        if (matchingStations.length > 0) {
-          await dbSavePhoto(folderStationName, fileName, file);
-          
-          matchingStations.forEach(st => {
-            if (!st.photos.includes(fileName)) {
-              st.photos.push(fileName);
-            }
-          });
-          loadedCount++;
-        }
-      }
-
-      saveStations();
-      alert(`Import complete! Loaded ${loadedCount} photos. Matching stations/markers have been linked.`);
-      
-      if (currentStation) {
-        await renderGalleryCards();
-      }
-      event.target.value = '';
-    }
-
     // --- Gallery Engine ---
     function showMapView() {
       document.getElementById('gallery-view').classList.remove('active');
@@ -851,7 +759,7 @@
         grid.innerHTML = `
           <div class="empty-state-box">
             <h3>No Photos Added Yet</h3>
-            <p style="margin-top: 8px;">Click <b>"+ Select / Add Photos"</b> above or ensure your photos exist in GitHub under <code>photos/${currentStation.name}/</code></p>
+            <p style="margin-top: 8px;">Click <b>"+ Select / Add Photos"</b> above to choose photos for <b>${currentStation.name}</b>.</p>
           </div>
         `;
         return;
@@ -882,12 +790,10 @@
       }
     }
 
-    // Smart fallback for uppercase/lowercase file extensions (.JPG, .jpeg)
     function handleImageError(imgElem, stationEnc, fileEnc) {
       const originalSrc = imgElem.src;
       if (!imgElem.dataset.retried) {
         imgElem.dataset.retried = '1';
-        // Try uppercase extension (common with phone uploads)
         if (originalSrc.endsWith('.jpg')) {
           imgElem.src = originalSrc.replace(/\.jpg$/i, '.JPG');
           return;
@@ -896,7 +802,6 @@
           return;
         }
       }
-      // Fallback placeholder with click-to-debug
       imgElem.src = 'https://placehold.co/600x400/f1f5f9/94a3b8?text=Image+Not+Found';
       imgElem.title = 'Failed to load: ' + decodeURIComponent(originalSrc);
     }
