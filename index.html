@@ -538,22 +538,22 @@
       localStorage.setItem('tube_stations_v4', JSON.stringify(stations));
     }
 
-    // Automatic Fetch from Repository for Fresh Devices
+    // Always fetch latest tube_stations.json from GitHub if present
     async function loadDefaultStationsIfEmpty() {
-      if (stations.length === 0) {
-        try {
-          const response = await fetch('tube_stations.json');
-          if (response.ok) {
-            const data = await response.json();
-            if (Array.isArray(data) && data.length > 0) {
+      try {
+        const response = await fetch('tube_stations.json');
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data) && data.length > 0) {
+            // Overwrite with server data if local was empty
+            if (stations.length === 0) {
               stations = data;
               saveStations();
-              renderPins();
             }
           }
-        } catch (e) {
-          console.log("No default tube_stations.json found to preload.");
         }
+      } catch (e) {
+        console.log("No default tube_stations.json accessible.");
       }
     }
 
@@ -565,6 +565,11 @@
         }
       });
       saveStations();
+    }
+
+    // Build URL safe relative path
+    function buildServerPhotoURL(stationName, fileName) {
+      return `photos/${encodeURIComponent(stationName.trim())}/${encodeURIComponent(fileName.trim())}`;
     }
 
     // --- Pan & Zoom Engine for Map ---
@@ -846,7 +851,7 @@
         grid.innerHTML = `
           <div class="empty-state-box">
             <h3>No Photos Added Yet</h3>
-            <p style="margin-top: 8px;">Click <b>"+ Select / Add Photos"</b> above to choose photos for <b>${currentStation.name}</b>.</p>
+            <p style="margin-top: 8px;">Click <b>"+ Select / Add Photos"</b> above or ensure your photos exist in GitHub under <code>photos/${currentStation.name}/</code></p>
           </div>
         `;
         return;
@@ -860,8 +865,7 @@
         if (blob) {
           src = URL.createObjectURL(blob);
         } else {
-          // Loads directly from the GitHub Pages repository structure
-          src = `photos/${encodeURIComponent(currentStation.name)}/${encodeURIComponent(photoFile)}`;
+          src = buildServerPhotoURL(currentStation.name, photoFile);
         }
 
         currentStationPhotoURLs.push(src);
@@ -870,10 +874,31 @@
         card.className = 'gallery-card';
         card.innerHTML = `
           <button class="delete-photo-btn" onclick="event.stopPropagation(); removeSinglePhoto('${photoFile}')" title="Delete Photo">&times;</button>
-          <img src="${src}" alt="${currentStation.name}" onclick="openLightbox(${idx})" onerror="this.onerror=null; this.src='https://placehold.co/600x400/f1f5f9/94a3b8?text=Image+Not+Found'">
+          <img src="${src}" alt="${currentStation.name}" 
+               onclick="openLightbox(${idx})" 
+               onerror="handleImageError(this, '${encodeURIComponent(currentStation.name)}', '${encodeURIComponent(photoFile)}')">
         `;
         grid.appendChild(card);
       }
+    }
+
+    // Smart fallback for uppercase/lowercase file extensions (.JPG, .jpeg)
+    function handleImageError(imgElem, stationEnc, fileEnc) {
+      const originalSrc = imgElem.src;
+      if (!imgElem.dataset.retried) {
+        imgElem.dataset.retried = '1';
+        // Try uppercase extension (common with phone uploads)
+        if (originalSrc.endsWith('.jpg')) {
+          imgElem.src = originalSrc.replace(/\.jpg$/i, '.JPG');
+          return;
+        } else if (originalSrc.endsWith('.JPG')) {
+          imgElem.src = originalSrc.replace(/\.JPG$/i, '.jpg');
+          return;
+        }
+      }
+      // Fallback placeholder with click-to-debug
+      imgElem.src = 'https://placehold.co/600x400/f1f5f9/94a3b8?text=Image+Not+Found';
+      imgElem.title = 'Failed to load: ' + decodeURIComponent(originalSrc);
     }
 
     async function handleFileUpload(event) {
