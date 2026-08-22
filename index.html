@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="robot" content="noindex, nofollow">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>London Tube Photo Map</title>
   <style>
@@ -381,15 +382,14 @@
       <h1>Tube Map Tour</h1>
       <button onclick="addNewStation()">+ Add Station</button>
       <button class="secondary" onclick="resetZoom()">Reset View</button>
-      <button class="secondary" onclick="exportData()">Export JSON</button>
+      <button class="secondary" onclick="exportData()">Export Data</button>
       
-      <!-- Import JSON -->
+      <!-- Manual Import Options -->
       <input type="file" id="import-json-input" accept=".json,application/json" style="display: none;" onchange="handleImportData(event)">
       <button class="secondary" onclick="document.getElementById('import-json-input').click()">Import JSON</button>
 
-      <!-- Import Photos Folder -->
       <input type="file" id="import-folder-input" webkitdirectory directory multiple style="display: none;" onchange="handleFolderUpload(event)">
-      <button class="secondary" onclick="document.getElementById('import-folder-input').click()">Import Photos Folder</button>
+      <button class="secondary" onclick="document.getElementById('import-folder-input').click()">📁 Import Folder</button>
       
       <button class="secondary" onclick="clearAllStations()">Clear All</button>
     </div>
@@ -438,7 +438,6 @@
   </div>
 
   <script>
-    // --- IndexedDB Storage Engine (Keyed by stationName) ---
     const DB_NAME = 'TubeMapTourDB';
     const DB_VERSION = 2;
     const STORE_NAME = 'station_photos_v2';
@@ -539,7 +538,25 @@
       localStorage.setItem('tube_stations_v4', JSON.stringify(stations));
     }
 
-    // Sync photos array across all stations sharing the same name
+    // Automatic Fetch from Repository for Fresh Devices
+    async function loadDefaultStationsIfEmpty() {
+      if (stations.length === 0) {
+        try {
+          const response = await fetch('tube_stations.json');
+          if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data) && data.length > 0) {
+              stations = data;
+              saveStations();
+              renderPins();
+            }
+          }
+        } catch (e) {
+          console.log("No default tube_stations.json found to preload.");
+        }
+      }
+    }
+
     function syncPhotosForStationName(name, photosList) {
       const key = getStationKey(name);
       stations.forEach(st => {
@@ -829,7 +846,7 @@
         grid.innerHTML = `
           <div class="empty-state-box">
             <h3>No Photos Added Yet</h3>
-            <p style="margin-top: 8px;">Click <b>"+ Select / Add Photos"</b> above or use <b>"📁 Import Photos Folder"</b> from the map view.</p>
+            <p style="margin-top: 8px;">Click <b>"+ Select / Add Photos"</b> above to choose photos for <b>${currentStation.name}</b>.</p>
           </div>
         `;
         return;
@@ -843,6 +860,7 @@
         if (blob) {
           src = URL.createObjectURL(blob);
         } else {
+          // Loads directly from the GitHub Pages repository structure
           src = `photos/${encodeURIComponent(currentStation.name)}/${encodeURIComponent(photoFile)}`;
         }
 
@@ -989,7 +1007,8 @@
     });
 
     // Initialize Map and Pins
-    function initMap() {
+    async function initMap() {
+      await loadDefaultStationsIfEmpty();
       renderPins();
       resetZoom();
     }
