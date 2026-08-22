@@ -92,15 +92,6 @@
       background: #e2e8f0;
     }
 
-    button.danger {
-      background: #ef4444;
-      color: white;
-    }
-
-    button.danger:hover {
-      background: #dc2626;
-    }
-
     /* Map Viewport */
     #map-viewport {
       width: 100%;
@@ -141,10 +132,6 @@
       padding: 6px;
     }
 
-    .station-pin:active {
-      cursor: grabbing;
-    }
-
     .pin-dot {
       width: 18px;
       height: 18px;
@@ -177,11 +164,6 @@
       border-bottom: 2px solid var(--border);
     }
 
-    .gallery-actions {
-      display: flex;
-      gap: 10px;
-    }
-
     .gallery-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -209,41 +191,6 @@
       display: block;
       cursor: pointer;
       background: #f1f5f9;
-    }
-
-    /* Floating delete button - Hover only */
-    .delete-photo-btn {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(15, 23, 42, 0.75);
-      color: #ffffff;
-      border: none;
-      border-radius: 50%;
-      width: 32px;
-      height: 32px;
-      font-size: 1.1rem;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(4px);
-      transition: opacity 0.2s ease, background 0.2s ease, transform 0.15s ease;
-      z-index: 5;
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .gallery-card:hover .delete-photo-btn {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .delete-photo-btn:hover {
-      background: #dc2626;
-      transform: scale(1.1);
     }
 
     /* Lightbox Modal */
@@ -281,7 +228,6 @@
       transform-origin: center center;
       transition: transform 0.1s ease-out;
       user-select: none;
-      pointer-events: auto;
     }
 
     .nav-btn {
@@ -379,20 +325,8 @@
   <!-- MAP VIEW -->
   <div id="map-view" class="view active">
     <div class="toolbar">
-      <h1>Tube Map Tour</h1>
-      <button onclick="addNewStation()">+ Add Station</button>
+      <h1>London Tube Photo Log</h1>
       <button class="secondary" onclick="resetZoom()">Reset View</button>
-      <button class="secondary" onclick="exportData()">Export JSON</button>
-      
-      <!-- Import JSON -->
-      <input type="file" id="import-json-input" accept=".json,application/json" style="display: none;" onchange="handleImportData(event)">
-      <button class="secondary" onclick="document.getElementById('import-json-input').click()">Import JSON</button>
-
-      <!-- Import Photos Folder -->
-      <input type="file" id="import-folder-input" webkitdirectory directory multiple style="display: none;" onchange="handleFolderUpload(event)">
-      <button class="secondary" onclick="document.getElementById('import-folder-input').click()">Import Photos</button>
-      
-      <button class="secondary" onclick="clearAllStations()">Clear All</button>
     </div>
 
     <div id="map-viewport">
@@ -409,11 +343,6 @@
       <div>
         <button class="secondary" onclick="showMapView()">← Back to Map</button>
         <h1 id="gallery-title" style="margin-top: 10px; font-size: 1.8rem;">Station Photos</h1>
-      </div>
-      <div class="gallery-actions">
-        <input type="file" id="file-input" multiple accept="image/*" style="display: none;" onchange="handleFileUpload(event)">
-        <button onclick="document.getElementById('file-input').click()">+ Select / Add Photos</button>
-        <button class="danger" onclick="deleteCurrentPin()">Delete This Marker</button>
       </div>
     </div>
     <div id="gallery-grid" class="gallery-grid"></div>
@@ -439,116 +368,21 @@
   </div>
 
   <script>
-    // --- IndexedDB Storage Engine (Keyed by stationName) ---
-    const DB_NAME = 'TubeMapTourDB';
-    const DB_VERSION = 2;
-    const STORE_NAME = 'station_photos_v2';
-
-    function getStationKey(name) {
-      return (name || '').trim().toLowerCase();
-    }
-
-    function openDB() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-          }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    async function dbSavePhoto(stationName, fileName, blob) {
-      const db = await openDB();
-      const stationKey = getStationKey(stationName);
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        store.put({ id: `${stationKey}___${fileName}`, stationKey, fileName, blob });
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    }
-
-    async function dbGetPhoto(stationName, fileName) {
-      const db = await openDB();
-      const stationKey = getStationKey(stationName);
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.get(`${stationKey}___${fileName}`);
-        req.onsuccess = () => resolve(req.result ? req.result.blob : null);
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    async function dbDeletePhoto(stationName, fileName) {
-      const db = await openDB();
-      const stationKey = getStationKey(stationName);
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        store.delete(`${stationKey}___${fileName}`);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    }
-
-    async function dbDeleteStationPhotos(stationName) {
-      const db = await openDB();
-      const stationKey = getStationKey(stationName);
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.openCursor();
-        req.onsuccess = (e) => {
-          const cursor = e.target.result;
-          if (cursor) {
-            if (cursor.value.stationKey === stationKey) {
-              cursor.delete();
-            }
-            cursor.continue();
-          } else {
-            resolve();
-          }
-        };
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    async function dbClearAllPhotos() {
-      const db = await openDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).clear();
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    }
-
-    // --- State & App Management ---
-    let stations = JSON.parse(localStorage.getItem('tube_stations_v4')) || [];
+    let stations = [];
     let currentStation = null;
     let currentPhotoIdx = 0;
     let currentStationPhotoURLs = [];
 
-    function saveStations() {
-      localStorage.setItem('tube_stations_v4', JSON.stringify(stations));
-    }
-
-    // Sync photos array across all stations sharing the same name
-    function syncPhotosForStationName(name, photosList) {
-      const key = getStationKey(name);
-      stations.forEach(st => {
-        if (getStationKey(st.name) === key) {
-          st.photos = [...photosList];
-        }
-      });
-      saveStations();
+    // Load station configuration automatically on startup
+    async function loadStationsData() {
+      try {
+        const res = await fetch('tube_stations.json');
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        stations = await res.json();
+        renderPins();
+      } catch (err) {
+        console.error('Could not load tube_stations.json:', err);
+      }
     }
 
     // --- Pan & Zoom Engine for Map ---
@@ -615,7 +449,7 @@
 
     window.addEventListener('mouseup', () => { isPanning = false; });
 
-    // --- Station Pins & Dragging ---
+    // --- Station Pins ---
     function renderPins() {
       pinsLayer.innerHTML = '';
       stations.forEach(station => {
@@ -623,188 +457,15 @@
         pin.className = 'station-pin';
         pin.style.left = `${station.x}%`;
         pin.style.top = `${station.y}%`;
-        pin.dataset.id = station.id;
         pin.title = station.name;
 
         pin.innerHTML = `<div class="pin-dot"></div>`;
-
-        setupPinInteractions(pin, station);
+        pin.onclick = (e) => {
+          e.stopPropagation();
+          openGallery(station);
+        };
         pinsLayer.appendChild(pin);
       });
-    }
-
-    function setupPinInteractions(pinElement, station) {
-      let isDragging = false;
-      let hasMoved = false;
-      let startMouseX, startMouseY;
-
-      pinElement.addEventListener('mousedown', (e) => {
-        if (e.button !== 0) return;
-        e.stopPropagation();
-        isDragging = true;
-        hasMoved = false;
-        startMouseX = e.clientX;
-        startMouseY = e.clientY;
-      });
-
-      window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        const dx = Math.abs(e.clientX - startMouseX);
-        const dy = Math.abs(e.clientY - startMouseY);
-
-        if (dx > 5 || dy > 5) {
-          hasMoved = true;
-          const imgRect = mapImg.getBoundingClientRect();
-          const percentX = ((e.clientX - imgRect.left) / imgRect.width) * 100;
-          const percentY = ((e.clientY - imgRect.top) / imgRect.height) * 100;
-
-          station.x = Math.max(0, Math.min(100, percentX));
-          station.y = Math.max(0, Math.min(100, percentY));
-
-          pinElement.style.left = `${station.x}%`;
-          pinElement.style.top = `${station.y}%`;
-        }
-      });
-
-      window.addEventListener('mouseup', () => {
-        if (!isDragging) return;
-        isDragging = false;
-        if (hasMoved) {
-          saveStations();
-        } else {
-          openGallery(station);
-        }
-      });
-    }
-
-    function addNewStation() {
-      const rawName = prompt("Enter Station Name (e.g. Hammersmith):");
-      if (!rawName || !rawName.trim()) return;
-
-      const name = rawName.trim();
-      const existingMatch = stations.find(s => getStationKey(s.name) === getStationKey(name));
-      const sharedPhotos = existingMatch ? [...existingMatch.photos] : [];
-
-      const viewportRect = viewport.getBoundingClientRect();
-      const imgRect = mapImg.getBoundingClientRect();
-      
-      const centerX = (viewportRect.width / 2 - imgRect.left) / imgRect.width * 100;
-      const centerY = (viewportRect.height / 2 - imgRect.top) / imgRect.height * 100;
-
-      const newStation = {
-        id: 'stn_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-        name: name,
-        x: Math.max(5, Math.min(95, centerX)),
-        y: Math.max(5, Math.min(95, centerY)),
-        photos: sharedPhotos
-      };
-
-      stations.push(newStation);
-      saveStations();
-      renderPins();
-      alert(`"${name}" marker placed! Click it to view photos, or drag the red dot to its spot on the map.`);
-    }
-
-    async function clearAllStations() {
-      if (confirm("Are you sure you want to remove all stations and their saved photos?")) {
-        stations = [];
-        localStorage.removeItem('tube_stations_v4');
-        await dbClearAllPhotos();
-        renderPins();
-      }
-    }
-
-    function deleteCurrentPin() {
-      if (!currentStation) return;
-      const sameNameCount = stations.filter(s => getStationKey(s.name) === getStationKey(currentStation.name)).length;
-      
-      if (sameNameCount > 1) {
-        if (confirm(`Delete only this marker for "${currentStation.name}"? Other markers for this station will remain.`)) {
-          stations = stations.filter(s => s.id !== currentStation.id);
-          saveStations();
-          renderPins();
-          showMapView();
-        }
-      } else {
-        if (confirm(`Delete "${currentStation.name}" marker and all its photos?`)) {
-          dbDeleteStationPhotos(currentStation.name);
-          stations = stations.filter(s => s.id !== currentStation.id);
-          saveStations();
-          renderPins();
-          showMapView();
-        }
-      }
-    }
-
-    function exportData() {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(stations, null, 2));
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", "tube_stations.json");
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-    }
-
-    function handleImportData(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          const importedStations = JSON.parse(e.target.result);
-          if (Array.isArray(importedStations)) {
-            stations = importedStations;
-            saveStations();
-            renderPins();
-            alert("Stations imported successfully!");
-          } else {
-            alert("Invalid JSON format. Expected an array of stations.");
-          }
-        } catch (err) {
-          alert("Error parsing JSON file: " + err.message);
-        }
-      };
-      reader.readAsText(file);
-      event.target.value = '';
-    }
-
-    async function handleFolderUpload(event) {
-      const files = Array.from(event.target.files);
-      if (!files.length) return;
-
-      let loadedCount = 0;
-
-      for (const file of files) {
-        const pathParts = file.webkitRelativePath.split('/');
-        if (pathParts.length < 2) continue;
-
-        const folderStationName = pathParts[pathParts.length - 2].trim();
-        const folderKey = getStationKey(folderStationName);
-        const fileName = file.name;
-
-        const matchingStations = stations.filter(s => getStationKey(s.name) === folderKey);
-
-        if (matchingStations.length > 0) {
-          await dbSavePhoto(folderStationName, fileName, file);
-          
-          matchingStations.forEach(st => {
-            if (!st.photos.includes(fileName)) {
-              st.photos.push(fileName);
-            }
-          });
-          loadedCount++;
-        }
-      }
-
-      saveStations();
-      alert(`Import complete! Loaded ${loadedCount} photos. Matching stations/markers have been linked.`);
-      
-      if (currentStation) {
-        await renderGalleryCards();
-      }
-      event.target.value = '';
     }
 
     // --- Gallery Engine ---
@@ -813,74 +474,45 @@
       document.getElementById('map-view').classList.add('active');
     }
 
-    async function openGallery(station) {
+    function openGallery(station) {
       currentStation = station;
       document.getElementById('map-view').classList.remove('active');
       document.getElementById('gallery-view').classList.add('active');
       document.getElementById('gallery-title').textContent = station.name;
-      await renderGalleryCards();
+      renderGalleryCards();
     }
 
-    async function renderGalleryCards() {
+    function renderGalleryCards() {
       const grid = document.getElementById('gallery-grid');
       grid.innerHTML = '';
       currentStationPhotoURLs = [];
 
-      if (!currentStation.photos || currentStation.photos.length === 0) {
+      // Find all photos across any entry sharing this station name
+      const matchingEntries = stations.filter(s => s.name.trim().toLowerCase() === currentStation.name.trim().toLowerCase());
+      const allStationPhotos = Array.from(new Set(matchingEntries.flatMap(s => s.photos || [])));
+
+      if (allStationPhotos.length === 0) {
         grid.innerHTML = `
           <div class="empty-state-box">
-            <h3>No Photos Added Yet</h3>
-            <p style="margin-top: 8px;">Click <b>"+ Select / Add Photos"</b> above or use <b>"📁 Import Photos Folder"</b> from the map view.</p>
+            <h3>No Photos Available</h3>
+            <p style="margin-top: 8px;">No photos found for <b>${currentStation.name}</b>.</p>
           </div>
         `;
         return;
       }
 
-      for (let idx = 0; idx < currentStation.photos.length; idx++) {
-        const photoFile = currentStation.photos[idx];
-        const blob = await dbGetPhoto(currentStation.name, photoFile);
-        let src = '';
-
-        if (blob) {
-          src = URL.createObjectURL(blob);
-        } else {
-          src = `photos/${encodeURIComponent(currentStation.name)}/${encodeURIComponent(photoFile)}`;
-        }
-
+      allStationPhotos.forEach((photoFile, idx) => {
+        // Direct relative path served by GitHub Pages
+        const src = `photos/${encodeURIComponent(currentStation.name)}/${encodeURIComponent(photoFile)}`;
         currentStationPhotoURLs.push(src);
 
         const card = document.createElement('div');
         card.className = 'gallery-card';
         card.innerHTML = `
-          <button class="delete-photo-btn" onclick="event.stopPropagation(); removeSinglePhoto('${photoFile}')" title="Delete Photo">&times;</button>
           <img src="${src}" alt="${currentStation.name}" onclick="openLightbox(${idx})" onerror="this.onerror=null; this.src='https://placehold.co/600x400/f1f5f9/94a3b8?text=Image+Not+Found'">
         `;
         grid.appendChild(card);
-      }
-    }
-
-    async function handleFileUpload(event) {
-      const files = Array.from(event.target.files);
-      if (!files.length || !currentStation) return;
-
-      for (const file of files) {
-        await dbSavePhoto(currentStation.name, file.name, file);
-        if (!currentStation.photos.includes(file.name)) {
-          currentStation.photos.push(file.name);
-        }
-      }
-
-      syncPhotosForStationName(currentStation.name, currentStation.photos);
-      await renderGalleryCards();
-      event.target.value = '';
-    }
-
-    async function removeSinglePhoto(fileName) {
-      if (!currentStation) return;
-      await dbDeletePhoto(currentStation.name, fileName);
-      currentStation.photos = currentStation.photos.filter(f => f !== fileName);
-      syncPhotosForStationName(currentStation.name, currentStation.photos);
-      await renderGalleryCards();
+      });
     }
 
     // --- Fullscreen Lightbox & Photo Zoom Engine ---
@@ -989,10 +621,10 @@
       if (e.key === '0') resetLightboxZoom();
     });
 
-    // Initialize Map and Pins
+    // Initialize Map and Data
     function initMap() {
-      renderPins();
       resetZoom();
+      loadStationsData();
     }
 
     if (mapImg.complete) {
