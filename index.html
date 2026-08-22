@@ -129,12 +129,12 @@
       align-items: center;
       justify-content: center;
       z-index: 10;
-      padding: 6px;
+      padding: 8px;
     }
 
     .pin-dot {
-      width: 18px;
-      height: 18px;
+      width: 20px;
+      height: 20px;
       background: var(--accent);
       border: 3px solid #ffffff;
       border-radius: 50%;
@@ -373,15 +373,17 @@
     let currentPhotoIdx = 0;
     let currentStationPhotoURLs = [];
 
-    // Load station configuration automatically on startup
+    // Load station JSON with cache-busting
     async function loadStationsData() {
       try {
-        const res = await fetch('tube_stations.json');
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        const res = await fetch('tube_stations.json?t=' + Date.now());
+        if (!res.ok) throw new Error(`Status ${res.status}: ${res.statusText}`);
         stations = await res.json();
+        console.log(`Loaded ${stations.length} station markers.`);
         renderPins();
       } catch (err) {
-        console.error('Could not load tube_stations.json:', err);
+        console.error('Failed to load tube_stations.json:', err);
+        alert('Could not load tube_stations.json. Check that the file exists in your repository root.');
       }
     }
 
@@ -452,6 +454,8 @@
     // --- Station Pins ---
     function renderPins() {
       pinsLayer.innerHTML = '';
+      if (!stations.length) return;
+
       stations.forEach(station => {
         const pin = document.createElement('div');
         pin.className = 'station-pin';
@@ -460,10 +464,10 @@
         pin.title = station.name;
 
         pin.innerHTML = `<div class="pin-dot"></div>`;
-        pin.onclick = (e) => {
+        pin.addEventListener('click', (e) => {
           e.stopPropagation();
           openGallery(station);
-        };
+        });
         pinsLayer.appendChild(pin);
       });
     }
@@ -487,29 +491,29 @@
       grid.innerHTML = '';
       currentStationPhotoURLs = [];
 
-      // Find all photos across any entry sharing this station name
+      // Combine photo lists across all markers with matching name
       const matchingEntries = stations.filter(s => s.name.trim().toLowerCase() === currentStation.name.trim().toLowerCase());
       const allStationPhotos = Array.from(new Set(matchingEntries.flatMap(s => s.photos || [])));
 
       if (allStationPhotos.length === 0) {
         grid.innerHTML = `
           <div class="empty-state-box">
-            <h3>No Photos Available</h3>
-            <p style="margin-top: 8px;">No photos found for <b>${currentStation.name}</b>.</p>
+            <h3>No Photos Found</h3>
+            <p style="margin-top: 8px;">Ensure files exist in <code>Photos/${currentStation.name}/</code></p>
           </div>
         `;
         return;
       }
 
       allStationPhotos.forEach((photoFile, idx) => {
-        // Direct relative path served by GitHub Pages
-        const src = `photos/${encodeURIComponent(currentStation.name)}/${encodeURIComponent(photoFile)}`;
+        // Explicitly points to capitalized "Photos/" directory
+        const src = `Photos/${encodeURIComponent(currentStation.name)}/${encodeURIComponent(photoFile)}`;
         currentStationPhotoURLs.push(src);
 
         const card = document.createElement('div');
         card.className = 'gallery-card';
         card.innerHTML = `
-          <img src="${src}" alt="${currentStation.name}" onclick="openLightbox(${idx})" onerror="this.onerror=null; this.src='https://placehold.co/600x400/f1f5f9/94a3b8?text=Image+Not+Found'">
+          <img src="${src}" alt="${currentStation.name}" onclick="openLightbox(${idx})" onerror="this.onerror=null; this.src='https://placehold.co/600x400/f1f5f9/94a3b8?text=Photo+Not+Found'; console.error('Failed to load: ' + this.getAttribute('src'));">
         `;
         grid.appendChild(card);
       });
@@ -621,16 +625,20 @@
       if (e.key === '0') resetLightboxZoom();
     });
 
-    // Initialize Map and Data
-    function initMap() {
+    // Run setup immediately and bind to load
+    function init() {
       resetZoom();
       loadStationsData();
     }
 
-    if (mapImg.complete) {
-      initMap();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        if (mapImg.complete) init();
+        else mapImg.onload = init;
+      });
     } else {
-      mapImg.onload = initMap;
+      if (mapImg.complete) init();
+      else mapImg.onload = init;
     }
 
     window.addEventListener('resize', resetZoom);
