@@ -552,21 +552,6 @@
       localStorage.setItem('tube_stations_v4', JSON.stringify(stations));
     }
 
-    async function loadDefaultStationsIfEmpty() {
-      try {
-        const response = await fetch('tube_stations.json');
-        if (response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data) && data.length > 0 && stations.length === 0) {
-            stations = data;
-            saveStations();
-          }
-        }
-      } catch (e) {
-        console.log("No default tube_stations.json found.");
-      }
-    }
-
     function syncPhotosForStationName(name, photosList) {
       const key = getStationKey(name);
       stations.forEach(st => {
@@ -921,6 +906,29 @@
       syncPhotosForStationName(currentStation.name, currentStation.photos);
       await renderGalleryCards();
     }
+	
+	// Sync directly with GitHub repository on every launch
+	async function syncWithServer() {
+	  try {
+		// Cache-busting query parameter forces the browser to pull the latest JSON from GitHub
+		const response = await fetch(`tube_stations.json?t=${Date.now()}`);
+		if (response.ok) {
+		  const serverData = await response.json();
+		  if (Array.isArray(serverData)) {
+			stations = serverData;
+			saveStations();
+			renderPins();
+		  }
+		}
+	  } catch (e) {
+		console.log("Could not refresh from server, using local fallback.", e);
+	  }
+	}
+
+	// Build URL safe relative path with cache-busting
+	function buildServerPhotoURL(stationName, fileName) {
+	  return `photos/${encodeURIComponent(stationName.trim())}/${encodeURIComponent(fileName.trim())}?v=${Date.now()}`;
+	}
 
     // --- Lightbox with Pinch-to-Zoom & Pan ---
     const lightbox = document.getElementById('lightbox');
@@ -1063,16 +1071,16 @@
     });
 
     async function initMap() {
-      await loadDefaultStationsIfEmpty();
-      renderPins();
-      resetZoom();
-    }
+	  renderPins();
+	  resetZoom();
+	  await syncWithServer();
+	}
 
-    if (mapImg.complete) {
-      initMap();
-    } else {
-      mapImg.onload = initMap;
-    }
+	if (mapImg.complete) {
+	  initMap();
+	} else {
+	  mapImg.onload = initMap;
+	}
 
     window.addEventListener('resize', () => {
       if (document.getElementById('map-view').classList.contains('active')) {
