@@ -176,7 +176,7 @@
     .gallery-header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       margin-bottom: 20px;
       padding-bottom: 12px;
       border-bottom: 2px solid var(--border);
@@ -186,12 +186,6 @@
     .gallery-header h1 {
       font-size: 1.4rem;
       margin-top: 6px;
-    }
-
-    .gallery-actions {
-      display: flex;
-      gap: 8px;
-      flex-shrink: 0;
     }
 
     .gallery-grid {
@@ -209,47 +203,13 @@
       position: relative;
     }
 
-    .gallery-card img {
+    .gallery-card img, .gallery-card video {
       width: 100%;
       height: 220px;
       object-fit: cover;
       display: block;
       cursor: pointer;
       background: #f1f5f9;
-    }
-
-    /* Floating delete button */
-    .delete-photo-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      background: rgba(15, 23, 42, 0.75);
-      color: #ffffff;
-      border: none;
-      border-radius: 50%;
-      width: 32px;
-      height: 32px;
-      font-size: 1.1rem;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(4px);
-      transition: opacity 0.2s ease, background 0.2s ease;
-      z-index: 5;
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .gallery-card:hover .delete-photo-btn {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .delete-photo-btn:hover {
-      background: #dc2626;
     }
 
     /* Fullscreen Lightbox */
@@ -279,7 +239,7 @@
       touch-action: none;
     }
 
-    .lightbox-img {
+    .lightbox-img, .lightbox-video {
       max-width: 90vw;
       max-height: 85vh;
       border-radius: 6px;
@@ -369,7 +329,6 @@
       color: var(--text-muted);
     }
 
-    /* Mobile Adaptations */
     @media (max-width: 640px) {
       .toolbar {
         padding: 6px 8px;
@@ -386,15 +345,8 @@
         grid-template-columns: repeat(2, 1fr);
         gap: 10px;
       }
-      .gallery-card img {
+      .gallery-card img, .gallery-card video {
         height: 150px;
-      }
-      .delete-photo-btn {
-        opacity: 1;
-        pointer-events: auto;
-        width: 28px;
-        height: 28px;
-        font-size: 0.95rem;
       }
       .nav-btn {
         width: 40px;
@@ -436,11 +388,7 @@
         <button class="secondary" onclick="showMapView()">← Back to Map</button>
         <h1 id="gallery-title">Station Photos</h1>
       </div>
-      <div class="gallery-actions">
-        <input type="file" id="file-input" multiple accept="image/*" style="display: none;" onchange="handleFileUpload(event)">
-        <button onclick="document.getElementById('file-input').click()">+ Photos</button>
-        <button class="danger" onclick="deleteCurrentPin()">Delete Marker</button>
-      </div>
+      <button class="danger" onclick="deleteCurrentPin()">Delete Marker</button>
     </div>
     <div id="gallery-grid" class="gallery-grid"></div>
   </div>
@@ -451,7 +399,8 @@
     <button class="nav-btn prev-btn" onclick="prevPhoto()" aria-label="Previous Photo">&#10094;</button>
     
     <div id="lightbox-stage">
-      <img id="lightbox-img" class="lightbox-img" src="" alt="Full view">
+      <img id="lightbox-img" class="lightbox-img" src="" alt="Full view" style="display:none;">
+      <video id="lightbox-video" class="lightbox-video" controls style="display:none;"></video>
     </div>
 
     <div class="lightbox-zoom-toolbar">
@@ -465,106 +414,72 @@
   </div>
 
   <script>
-    const DB_NAME = 'TubeMapTourDB';
-    const DB_VERSION = 2;
-    const STORE_NAME = 'station_photos_v2';
-
-    function getStationKey(name) {
-      return (name || '').trim().toLowerCase();
-    }
-
-    function openDB() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-          }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    async function dbSavePhoto(stationName, fileName, blob) {
-      const db = await openDB();
-      const stationKey = getStationKey(stationName);
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        store.put({ id: `${stationKey}___${fileName}`, stationKey, fileName, blob });
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    }
-
-    async function dbGetPhoto(stationName, fileName) {
-      const db = await openDB();
-      const stationKey = getStationKey(stationName);
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.get(`${stationKey}___${fileName}`);
-        req.onsuccess = () => resolve(req.result ? req.result.blob : null);
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    async function dbDeletePhoto(stationName, fileName) {
-      const db = await openDB();
-      const stationKey = getStationKey(stationName);
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        store.delete(`${stationKey}___${fileName}`);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    }
-
-    async function dbDeleteStationPhotos(stationName) {
-      const db = await openDB();
-      const stationKey = getStationKey(stationName);
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.openCursor();
-        req.onsuccess = (e) => {
-          const cursor = e.target.result;
-          if (cursor) {
-            if (cursor.value.stationKey === stationKey) cursor.delete();
-            cursor.continue();
-          } else {
-            resolve();
-          }
-        };
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    let stations = JSON.parse(localStorage.getItem('tube_stations_v4')) || [];
+    let stations = [];
     let currentStation = null;
     let currentPhotoIdx = 0;
     let currentStationPhotoURLs = [];
 
+    // Automatically inspect GitHub repo folder for any media files
+    async function fetchStationPhotos(stationName) {
+      const folderName = stationName.trim();
+      const directFolderUrl = `photos/${encodeURIComponent(folderName)}`;
+
+      // 1. If running on GitHub Pages, use GitHub API to get the exact file list
+      const host = window.location.hostname;
+      if (host.includes('github.io')) {
+        const repoPath = window.location.pathname.split('/')[1] || '';
+        const user = host.split('.')[0];
+        const apiUrl = `https://api.github.com/repos/${user}/${repoPath}/contents/photos/${encodeURIComponent(folderName)}`;
+        try {
+          const res = await fetch(apiUrl);
+          if (res.ok) {
+            const files = await res.json();
+            if (Array.isArray(files)) {
+              return files
+                .filter(f => f.type === 'file' && !f.name.startsWith('.'))
+                .map(f => `${directFolderUrl}/${encodeURIComponent(f.name)}`);
+            }
+          }
+        } catch (e) {
+          console.warn("GitHub API directory fetch fallback triggered.");
+        }
+      }
+
+      // 2. Fallback for static servers / local runs: probe standard numeric and photo name patterns
+      const probeList = [];
+      for (let i = 1; i <= 30; i++) {
+        probeList.push(`${directFolderUrl}/${i}.jpg`);
+        probeList.push(`${directFolderUrl}/${i}.JPG`);
+        probeList.push(`${directFolderUrl}/${i}.png`);
+      }
+      return probeList;
+    }
+
+    // Always fetch latest tube_stations.json from repository
+    async function syncStations() {
+      try {
+        const response = await fetch(`tube_stations.json?t=${Date.now()}`, { cache: 'no-store' });
+        if (response.ok) {
+          const serverData = await response.json();
+          if (Array.isArray(serverData)) {
+            stations = serverData;
+            localStorage.setItem('tube_stations_clean', JSON.stringify(stations));
+            renderPins();
+            return;
+          }
+        }
+      } catch (e) {
+        console.log("Could not load server JSON, loading local copy.");
+      }
+      stations = JSON.parse(localStorage.getItem('tube_stations_clean')) || [];
+      renderPins();
+    }
+
     function saveStations() {
-      localStorage.setItem('tube_stations_v4', JSON.stringify(stations));
+      localStorage.setItem('tube_stations_clean', JSON.stringify(stations));
     }
 
-    function syncPhotosForStationName(name, photosList) {
-      const key = getStationKey(name);
-      stations.forEach(st => {
-        if (getStationKey(st.name) === key) st.photos = [...photosList];
-      });
-      saveStations();
-    }
-
-    function buildServerPhotoURL(stationName, fileName) {
-      return `photos/${encodeURIComponent(stationName.trim())}/${encodeURIComponent(fileName.trim())}`;
-    }
-
-    // --- Map Pan & Zoom Engine (Mouse + Touch) ---
+    // --- Pan & Zoom Engine ---
     const viewport = document.getElementById('map-viewport');
     const container = document.getElementById('map-container');
     const mapImg = document.getElementById('map-img');
@@ -595,7 +510,6 @@
       updateTransform();
     }
 
-    // Desktop Mouse Wheel Zoom
     viewport.addEventListener('wheel', (e) => {
       e.preventDefault();
       const zoomFactor = 1.18;
@@ -615,7 +529,6 @@
       updateTransform();
     }, { passive: false });
 
-    // Desktop Mouse Pan
     viewport.addEventListener('mousedown', (e) => {
       if (e.target.closest('.station-pin') || e.target.closest('.toolbar')) return;
       isPanning = true;
@@ -632,7 +545,6 @@
 
     window.addEventListener('mouseup', () => { isPanning = false; });
 
-    // Touch Support for Mobile (1-finger pan, 2-finger pinch-to-zoom)
     viewport.addEventListener('touchstart', (e) => {
       if (e.target.closest('.station-pin') || e.target.closest('.toolbar')) return;
       if (e.touches.length === 1) {
@@ -680,7 +592,7 @@
       }
     });
 
-    // --- Station Pins & Dragging ---
+    // --- Station Pins & Interactions ---
     function renderPins() {
       pinsLayer.innerHTML = '';
       stations.forEach(station => {
@@ -761,13 +673,10 @@
     }
 
     function addNewStation() {
-      const rawName = prompt("Enter Station Name (e.g. Hammersmith):");
+      const rawName = prompt("Enter Station Name (must match your photos/ folder):");
       if (!rawName || !rawName.trim()) return;
 
       const name = rawName.trim();
-      const existingMatch = stations.find(s => getStationKey(s.name) === getStationKey(name));
-      const sharedPhotos = existingMatch ? [...existingMatch.photos] : [];
-
       const viewportRect = viewport.getBoundingClientRect();
       const imgRect = mapImg.getBoundingClientRect();
       
@@ -775,11 +684,10 @@
       const centerY = (viewportRect.height / 2 - imgRect.top) / imgRect.height * 100;
 
       const newStation = {
-        id: 'stn_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        id: 'stn_' + Date.now(),
         name: name,
         x: Math.max(5, Math.min(95, centerX)),
-        y: Math.max(5, Math.min(95, centerY)),
-        photos: sharedPhotos
+        y: Math.max(5, Math.min(95, centerY))
       };
 
       stations.push(newStation);
@@ -789,23 +697,11 @@
 
     function deleteCurrentPin() {
       if (!currentStation) return;
-      const sameNameCount = stations.filter(s => getStationKey(s.name) === getStationKey(currentStation.name)).length;
-      
-      if (sameNameCount > 1) {
-        if (confirm(`Delete only this marker for "${currentStation.name}"?`)) {
-          stations = stations.filter(s => s.id !== currentStation.id);
-          saveStations();
-          renderPins();
-          showMapView();
-        }
-      } else {
-        if (confirm(`Delete "${currentStation.name}" marker and its photos?`)) {
-          dbDeleteStationPhotos(currentStation.name);
-          stations = stations.filter(s => s.id !== currentStation.id);
-          saveStations();
-          renderPins();
-          showMapView();
-        }
+      if (confirm(`Delete marker for "${currentStation.name}"?`)) {
+        stations = stations.filter(s => s.id !== currentStation.id);
+        saveStations();
+        renderPins();
+        showMapView();
       }
     }
 
@@ -830,110 +726,73 @@
       currentStation = station;
       document.getElementById('map-view').classList.remove('active');
       document.getElementById('gallery-view').classList.add('active');
-      document.getElementById('gallery-title').textContent = station.name;
-      await renderGalleryCards();
+      document.getElementById('gallery-title').textContent = currentStation.name;
+      
+      const grid = document.getElementById('gallery-grid');
+      grid.innerHTML = `<div class="empty-state-box">Loading station photos...</div>`;
+      
+      const photoUrls = await fetchStationPhotos(currentStation.name);
+      renderGalleryCards(photoUrls);
     }
 
-    async function renderGalleryCards() {
+    function renderGalleryCards(photoUrls) {
       const grid = document.getElementById('gallery-grid');
       grid.innerHTML = '';
       currentStationPhotoURLs = [];
 
-      if (!currentStation.photos || currentStation.photos.length === 0) {
+      if (!photoUrls || photoUrls.length === 0) {
         grid.innerHTML = `
           <div class="empty-state-box">
-            <h3>No Photos Added Yet</h3>
-            <p style="margin-top: 8px;">Click <b>"+ Photos"</b> above or ensure images exist under <code>photos/${currentStation.name}/</code></p>
+            <h3>No Photos Found</h3>
+            <p style="margin-top: 8px;">Make sure photos are placed in <code>photos/${currentStation.name}/</code> on GitHub.</p>
           </div>
         `;
         return;
       }
 
-      for (let idx = 0; idx < currentStation.photos.length; idx++) {
-        const photoFile = currentStation.photos[idx];
-        const blob = await dbGetPhoto(currentStation.name, photoFile);
-        let src = blob ? URL.createObjectURL(blob) : buildServerPhotoURL(currentStation.name, photoFile);
-
-        currentStationPhotoURLs.push(src);
-
+      photoUrls.forEach((src) => {
+        const isVideo = src.match(/\.(mp4|webm|mov)$/i);
         const card = document.createElement('div');
         card.className = 'gallery-card';
-        card.innerHTML = `
-          <button class="delete-photo-btn" onclick="event.stopPropagation(); removeSinglePhoto('${photoFile}')" title="Delete Photo">&times;</button>
-          <img src="${src}" alt="${currentStation.name}" 
-               onclick="openLightbox(${idx})" 
-               onerror="handleImageError(this, '${encodeURIComponent(currentStation.name)}', '${encodeURIComponent(photoFile)}')">
-        `;
-        grid.appendChild(card);
-      }
-    }
 
-    function handleImageError(imgElem, stationEnc, fileEnc) {
-      const originalSrc = imgElem.src;
-      if (!imgElem.dataset.retried) {
-        imgElem.dataset.retried = '1';
-        if (originalSrc.endsWith('.jpg')) {
-          imgElem.src = originalSrc.replace(/\.jpg$/i, '.JPG');
-          return;
-        } else if (originalSrc.endsWith('.JPG')) {
-          imgElem.src = originalSrc.replace(/\.JPG$/i, '.jpg');
-          return;
+        if (isVideo) {
+          const video = document.createElement('video');
+          video.src = src;
+          video.muted = true;
+          video.onclick = () => {
+            const idx = currentStationPhotoURLs.indexOf(src);
+            if (idx !== -1) openLightbox(idx);
+          };
+          card.appendChild(video);
+          grid.appendChild(card);
+          currentStationPhotoURLs.push(src);
+        } else {
+          const img = document.createElement('img');
+          img.src = src;
+          img.alt = currentStation.name;
+          img.onload = () => {
+            if (!currentStationPhotoURLs.includes(src)) {
+              currentStationPhotoURLs.push(src);
+            }
+          };
+          img.onerror = () => {
+            card.remove();
+          };
+          img.onclick = () => {
+            const idx = currentStationPhotoURLs.indexOf(src);
+            if (idx !== -1) openLightbox(idx);
+          };
+          card.appendChild(img);
+          grid.appendChild(card);
         }
-      }
-      imgElem.src = 'https://placehold.co/600x400/f1f5f9/94a3b8?text=Image+Not+Found';
+      });
     }
-
-    async function handleFileUpload(event) {
-      const files = Array.from(event.target.files);
-      if (!files.length || !currentStation) return;
-
-      for (const file of files) {
-        await dbSavePhoto(currentStation.name, file.name, file);
-        if (!currentStation.photos.includes(file.name)) {
-          currentStation.photos.push(file.name);
-        }
-      }
-
-      syncPhotosForStationName(currentStation.name, currentStation.photos);
-      await renderGalleryCards();
-      event.target.value = '';
-    }
-
-    async function removeSinglePhoto(fileName) {
-      if (!currentStation) return;
-      await dbDeletePhoto(currentStation.name, fileName);
-      currentStation.photos = currentStation.photos.filter(f => f !== fileName);
-      syncPhotosForStationName(currentStation.name, currentStation.photos);
-      await renderGalleryCards();
-    }
-	
-	// Sync directly with GitHub repository on every launch
-	async function syncWithServer() {
-	  try {
-		// Cache-busting query parameter forces the browser to pull the latest JSON from GitHub
-		const response = await fetch(`tube_stations.json?t=${Date.now()}`);
-		if (response.ok) {
-		  const serverData = await response.json();
-		  if (Array.isArray(serverData)) {
-			stations = serverData;
-			saveStations();
-			renderPins();
-		  }
-		}
-	  } catch (e) {
-		console.log("Could not refresh from server, using local fallback.", e);
-	  }
-	}
-
-	// Build URL safe relative path with cache-busting
-	function buildServerPhotoURL(stationName, fileName) {
-	  return `photos/${encodeURIComponent(stationName.trim())}/${encodeURIComponent(fileName.trim())}?v=${Date.now()}`;
-	}
 
     // --- Lightbox with Pinch-to-Zoom & Pan ---
     const lightbox = document.getElementById('lightbox');
     const lightboxStage = document.getElementById('lightbox-stage');
     const lightboxImg = document.getElementById('lightbox-img');
+    const lightboxVideo = document.getElementById('lightbox-video');
     const lightboxCounter = document.getElementById('lightbox-counter');
 
     let lbScale = 1;
@@ -945,7 +804,8 @@
     let lbStartScale = 1;
 
     function updateLightboxTransform() {
-      lightboxImg.style.transform = `translate(${lbPanX}px, ${lbPanY}px) scale(${lbScale})`;
+      const target = lightboxImg.style.display !== 'none' ? lightboxImg : lightboxVideo;
+      target.style.transform = `translate(${lbPanX}px, ${lbPanY}px) scale(${lbScale})`;
       lightboxStage.style.cursor = lbScale > 1 ? (lbIsDragging ? 'grabbing' : 'grab') : 'default';
     }
 
@@ -988,7 +848,6 @@
 
     window.addEventListener('mouseup', () => { lbIsDragging = false; });
 
-    // Touch Zoom & Pan on Lightbox
     lightboxStage.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
       if (e.touches.length === 1 && lbScale > 1) {
@@ -1041,13 +900,28 @@
 
     function closeLightbox() {
       lightbox.classList.remove('active');
+      lightboxVideo.pause();
       resetLightboxZoom();
     }
 
     function updateLightbox() {
       if (!currentStationPhotoURLs.length) return;
       resetLightboxZoom();
-      lightboxImg.src = currentStationPhotoURLs[currentPhotoIdx];
+      const currentSrc = currentStationPhotoURLs[currentPhotoIdx];
+      const isVideo = currentSrc.match(/\.(mp4|webm|mov)$/i);
+
+      if (isVideo) {
+        lightboxImg.style.display = 'none';
+        lightboxVideo.style.display = 'block';
+        lightboxVideo.src = currentSrc;
+        lightboxVideo.play();
+      } else {
+        lightboxVideo.pause();
+        lightboxVideo.style.display = 'none';
+        lightboxImg.style.display = 'block';
+        lightboxImg.src = currentSrc;
+      }
+
       lightboxCounter.textContent = `${currentPhotoIdx + 1} / ${currentStationPhotoURLs.length}`;
     }
 
@@ -1071,16 +945,15 @@
     });
 
     async function initMap() {
-	  renderPins();
-	  resetZoom();
-	  await syncWithServer();
-	}
+      await syncStations();
+      resetZoom();
+    }
 
-	if (mapImg.complete) {
-	  initMap();
-	} else {
-	  mapImg.onload = initMap;
-	}
+    if (mapImg.complete) {
+      initMap();
+    } else {
+      mapImg.onload = initMap;
+    }
 
     window.addEventListener('resize', () => {
       if (document.getElementById('map-view').classList.contains('active')) {
