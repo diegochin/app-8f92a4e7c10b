@@ -419,40 +419,17 @@
     let currentPhotoIdx = 0;
     let currentStationPhotoURLs = [];
 
-    // Automatically inspect GitHub repo folder for any media files
-    async function fetchStationPhotos(stationName) {
-      const folderName = stationName.trim();
-      const directFolderUrl = `photos/${encodeURIComponent(folderName)}`;
+    function getStationFolder(station) {
+      if (!station) return '';
+      if (station.folder) return station.folder;
+      if (station.name && station.name.startsWith('Paddington')) return 'Paddington';
+      return station.name;
+    }
 
-      // 1. If running on GitHub Pages, use GitHub API to get the exact file list
-      const host = window.location.hostname;
-      if (host.includes('github.io')) {
-        const repoPath = window.location.pathname.split('/')[1] || '';
-        const user = host.split('.')[0];
-        const apiUrl = `https://api.github.com/repos/${user}/${repoPath}/contents/photos/${encodeURIComponent(folderName)}`;
-        try {
-          const res = await fetch(apiUrl);
-          if (res.ok) {
-            const files = await res.json();
-            if (Array.isArray(files)) {
-              return files
-                .filter(f => f.type === 'file' && !f.name.startsWith('.'))
-                .map(f => `${directFolderUrl}/${encodeURIComponent(f.name)}`);
-            }
-          }
-        } catch (e) {
-          console.warn("GitHub API directory fetch fallback triggered.");
-        }
-      }
-
-      // 2. Fallback for static servers / local runs: probe standard numeric and photo name patterns
-      const probeList = [];
-      for (let i = 1; i <= 30; i++) {
-        probeList.push(`${directFolderUrl}/${i}.jpg`);
-        probeList.push(`${directFolderUrl}/${i}.JPG`);
-        probeList.push(`${directFolderUrl}/${i}.png`);
-      }
-      return probeList;
+    function getStationPhotoURLs(station) {
+      if (!station || !station.photos || !station.photos.length) return [];
+      const folder = getStationFolder(station).trim();
+      return station.photos.map(file => `photos/${encodeURIComponent(folder)}/${encodeURIComponent(file)}`);
     }
 
     // Always fetch latest tube_stations.json from repository
@@ -722,29 +699,27 @@
       updateTransform();
     }
 
-    async function openGallery(station) {
+    function openGallery(station) {
       currentStation = station;
       document.getElementById('map-view').classList.remove('active');
       document.getElementById('gallery-view').classList.add('active');
       document.getElementById('gallery-title').textContent = currentStation.name;
       
-      const grid = document.getElementById('gallery-grid');
-      grid.innerHTML = `<div class="empty-state-box">Loading station photos...</div>`;
-      
-      const photoUrls = await fetchStationPhotos(currentStation.name);
+      const photoUrls = getStationPhotoURLs(currentStation);
       renderGalleryCards(photoUrls);
     }
 
     function renderGalleryCards(photoUrls) {
       const grid = document.getElementById('gallery-grid');
       grid.innerHTML = '';
-      currentStationPhotoURLs = [];
+      currentStationPhotoURLs = [...(photoUrls || [])];
 
       if (!photoUrls || photoUrls.length === 0) {
+        const folder = getStationFolder(currentStation);
         grid.innerHTML = `
           <div class="empty-state-box">
             <h3>No Photos Found</h3>
-            <p style="margin-top: 8px;">Make sure photos are placed in <code>photos/${currentStation.name}/</code> on GitHub.</p>
+            <p style="margin-top: 8px;">Make sure photos are placed in <code>photos/${folder}/</code></p>
           </div>
         `;
         return;
@@ -765,19 +740,11 @@
           };
           card.appendChild(video);
           grid.appendChild(card);
-          currentStationPhotoURLs.push(src);
         } else {
           const img = document.createElement('img');
           img.src = src;
           img.alt = currentStation.name;
-          img.onload = () => {
-            if (!currentStationPhotoURLs.includes(src)) {
-              currentStationPhotoURLs.push(src);
-            }
-          };
-          img.onerror = () => {
-            card.remove();
-          };
+          img.loading = 'lazy';
           img.onclick = () => {
             const idx = currentStationPhotoURLs.indexOf(src);
             if (idx !== -1) openLightbox(idx);
