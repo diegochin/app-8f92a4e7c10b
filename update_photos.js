@@ -23,26 +23,15 @@ const folders = fs.readdirSync(photosDir).filter(f => {
   }
 });
 
-function getFolderForStation(name) {
-  if (folders.includes(name)) return name;
-  if (name.startsWith('Paddington') && folders.includes('Paddington')) return 'Paddington';
-  return null;
-}
-
 const mediaRegex = /\.(jpe?g|png|webp|mp4|mov|webm)$/i;
 
 let totalPhotosLinked = 0;
 let stationsUpdated = 0;
 
 stations.forEach(st => {
-  const folder = getFolderForStation(st.name);
-  if (folder) {
-    if (folder !== st.name) {
-      st.folder = folder;
-    } else {
-      delete st.folder;
-    }
-    const folderPath = path.join(photosDir, folder);
+  delete st.folder;
+  if (folders.includes(st.name)) {
+    const folderPath = path.join(photosDir, st.name);
     const files = fs.readdirSync(folderPath)
       .filter(f => !f.startsWith('.') && mediaRegex.test(f))
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));

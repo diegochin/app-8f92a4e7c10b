@@ -419,16 +419,9 @@
     let currentPhotoIdx = 0;
     let currentStationPhotoURLs = [];
 
-    function getStationFolder(station) {
-      if (!station) return '';
-      if (station.folder) return station.folder;
-      if (station.name && station.name.startsWith('Paddington')) return 'Paddington';
-      return station.name;
-    }
-
     function getStationPhotoURLs(station) {
       if (!station || !station.photos || !station.photos.length) return [];
-      const folder = getStationFolder(station).trim();
+      const folder = (station.name || '').trim();
       return station.photos.map(file => `photos/${encodeURIComponent(folder)}/${encodeURIComponent(file)}`);
     }
 
@@ -715,7 +708,7 @@
       currentStationPhotoURLs = [...(photoUrls || [])];
 
       if (!photoUrls || photoUrls.length === 0) {
-        const folder = getStationFolder(currentStation);
+        const folder = (currentStation && currentStation.name ? currentStation.name : '').trim();
         grid.innerHTML = `
           <div class="empty-state-box">
             <h3>No Photos Found</h3>

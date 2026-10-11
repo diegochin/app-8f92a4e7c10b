@@ -1171,10 +1171,9 @@
   },
   {
     "id": "stn_1787394654627",
-    "name": "Paddington (Hammersmith & City and Circle lines)",
+    "name": "Paddington",
     "x": 28.941746519798244,
     "y": 38.36783441840904,
-    "folder": "Paddington",
     "photos": [
       "IMG_20230430_104442.jpg",
       "IMG_20230430_104512.jpg",
@@ -1193,10 +1192,9 @@
   },
   {
     "id": "stn_1787394677543",
-    "name": "Paddington (District and Circle lines)",
+    "name": "Paddington",
     "x": 29.71290007247742,
     "y": 39.39101285263447,
-    "folder": "Paddington",
     "photos": [
       "IMG_20230430_104442.jpg",
       "IMG_20230430_104512.jpg",
